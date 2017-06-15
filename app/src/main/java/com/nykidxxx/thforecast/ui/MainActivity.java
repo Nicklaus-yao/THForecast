@@ -12,6 +12,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
+import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -29,7 +30,6 @@ import java.io.IOException;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
-import butterknife.OnCheckedChanged;
 import butterknife.OnClick;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -41,35 +41,37 @@ public class MainActivity extends AppCompatActivity {
 
     public static final String TAG = MainActivity.class.getSimpleName();
     public static final String DAILY_FORECAST = "DAILY_FORECAST";
+    public static final String HOURLY_FORECAST = "HOURLY_FORECAST";
+    public static final String SUN_IS_UP = "SUN_IS_UP";
+    public boolean sunIsUp;
+    public boolean newInstance = false;
 
     private Forecast mForecast;
+    private Current mCurrent;
+    final double latitude = 40.606648;
+    final double longitude = -73.978133;
 
+    @BindView(R.id.mainActivityLayout) RelativeLayout mMainActivityLayout;
     @BindView(R.id.timeLabel) TextView mTimeLabel;
     @BindView(R.id.temperatureLabel) TextView mTemperatureLabel;
-    @BindView(R.id.humidityValue) TextView mHumidityValue;
-    @BindView(R.id.precipValue) TextView mPrecipValue;
+    @BindView(R.id.sunValue) TextView mSunValue;
+    @BindView(R.id.sunLabelButton) Button mSunLabel;
+    @BindView(R.id.pwhValue) TextView mPWHValue;
+    @BindView(R.id.pwhLabelButton) Button mPWHLabel;
     @BindView(R.id.summaryLabel) TextView mSummaryLabel;
     @BindView(R.id.imageViewIcon) ImageView mImageViewIcon;
-    @BindView(R.id.imageViewRefresh) ImageView mImageViewRefresh;
     @BindView(R.id.progressBar) ProgressBar mProgressBar;
+    @BindView(R.id.minTempLabel) TextView mMinTempLabel;
+    @BindView(R.id.maxTempLabel) TextView mMaxTempLabel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         ButterKnife.bind(this);
+        newInstance = true;
 
         mProgressBar.setVisibility(View.INVISIBLE);
-
-        final double latitude = 40.606648;
-        final double longitude = -73.978133;
-
-        mImageViewRefresh.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                getForecast(latitude, longitude);
-            }
-        });
 
         getForecast(latitude, longitude);
 
@@ -144,26 +146,10 @@ public class MainActivity extends AppCompatActivity {
     private void toggleRefresh() {
         if(mProgressBar.getVisibility() == View.INVISIBLE) {
             mProgressBar.setVisibility(View.VISIBLE);
-            mImageViewRefresh.setVisibility(View.INVISIBLE);
         }
         else{
             mProgressBar.setVisibility(View.INVISIBLE);
-            mImageViewRefresh.setVisibility(View.VISIBLE);
-
         }
-    }
-
-    private void updateDisplay() {
-        Current current = mForecast.getCurrent();
-
-        mTemperatureLabel.setText(current.getTemperature()+"");
-        mTimeLabel.setText("At " + current.getFormattedTime() + " it is");
-        mHumidityValue.setText(current.getHumidity()+"");
-        mPrecipValue.setText(current.getPrecipChance() + "%");
-        mSummaryLabel.setText(current.getSummary());
-
-        Drawable drawable = getResources().getDrawable(current.getIconId());
-        mImageViewIcon.setImageDrawable(drawable);
     }
 
     private Forecast parseForecastDetails(String jsonData) throws  JSONException {
@@ -207,9 +193,9 @@ public class MainActivity extends AppCompatActivity {
         JSONObject hourly = forecast.getJSONObject("hourly");
         JSONArray data = hourly.getJSONArray("data");
 
-        Hour[] hours = new Hour[data.length()];
+        Hour[] hours = new Hour[25];
 
-        for (int i = 0; i < data.length(); i++){
+        for (int i = 0; i < 25; i++){
             JSONObject jsonHour = data.getJSONObject(i);
             Hour hour = new Hour();
 
@@ -225,7 +211,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private Current getCurrentDetails(String jsonData) throws JSONException {
-        //"throws JSONException" moves the responsibility for handling the exception.=
+        //"throws JSONException" moves the responsibility for handling the exception.
         JSONObject forecast = new JSONObject(jsonData);
 
         String timezone = forecast.getString("timezone");
@@ -242,7 +228,19 @@ public class MainActivity extends AppCompatActivity {
         current.setSummary(currently.getString("summary"));
         current.setTemperature(currently.getDouble("temperature"));
         current.setTimeZone(timezone);
+        current.setWindSpeed(currently.getDouble("windSpeed"));
         Log.d(TAG, current.getFormattedTime());
+
+        JSONObject todayFromDaily = forecast.getJSONObject("daily")
+                                            .getJSONArray("data")
+                                            .getJSONObject(0);
+        current.setSunsetTime(todayFromDaily.getLong("sunsetTime"));
+        current.setSunriseTime(todayFromDaily.getLong("sunriseTime"));
+        current.setMinTemp(todayFromDaily.getDouble("temperatureMin"));
+        current.setMaxTemp(todayFromDaily.getDouble("temperatureMax"));
+        Log.d(TAG, current.getSunriseTime()+"");
+        Log.d(TAG, current.getTime()+"");
+        Log.d(TAG, current.getSunsetTime()+"");
 
         return current;
     }
@@ -256,7 +254,6 @@ public class MainActivity extends AppCompatActivity {
             isAvailable = true;
 
         return isAvailable;
-
     }
 
     private  void alertUserAboutError(){
@@ -265,10 +262,89 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+
+    private void updateDisplay() {
+        mCurrent = mForecast.getCurrent();
+
+        mTemperatureLabel.setText(mCurrent.getTemperature()+"");
+        mTimeLabel.setText("At " + mCurrent.getFormattedTime() + " it is");
+        mSummaryLabel.setText(mCurrent.getSummary());
+        mMinTempLabel.setText(mCurrent.getMinTemp()+"");
+        mMaxTempLabel.setText(mCurrent.getMaxTemp()+"");
+
+        Drawable drawable = getResources().getDrawable(mCurrent.getIconId());
+        mImageViewIcon.setImageDrawable(drawable);
+
+        Log.d(TAG, "Is Sun up? :"+mCurrent.isSunUp());
+
+        if(!mCurrent.isSunUp()) {
+            sunIsUp = false;
+            mMainActivityLayout.setBackground(getResources().getDrawable(R.drawable.bg_gradient_night));
+        } else {
+            sunIsUp = true;
+            mMainActivityLayout.setBackground(getResources().getDrawable(R.drawable.bg_gradient));
+        }
+
+        if (newInstance){
+            mSunLabel.setText("Sunrise");
+            mSunValue.setText(mCurrent.getFormattedSunriseTime()+"");
+            mPWHLabel.setText("Rain/Snow");
+            mPWHValue.setText(mCurrent.getPrecipChance() + "%");
+            newInstance = false;
+        }
+    }
+
     @OnClick (R.id.buttonDaily)
     public void startDailyActivity(View view){
         Intent intent = new Intent(this, DailyForecastActivity.class);
         intent.putExtra(DAILY_FORECAST, mForecast.getDailyForecast());
+        intent.putExtra(SUN_IS_UP, sunIsUp);
         startActivity(intent);
+    }
+
+    @OnClick (R.id.buttonHourly)
+    public void startHourlyActivity(View view){
+        Intent intent = new Intent(this, HourlyForecastActivity.class);
+        intent.putExtra(HOURLY_FORECAST, mForecast.getHourlyForecast());
+        intent.putExtra(SUN_IS_UP, sunIsUp);
+        startActivity(intent);
+    }
+
+    @OnClick (R.id.temperatureLabel)
+    public void tempLabelClicked(View view){
+        getForecast(latitude, longitude);
+    }
+
+    @OnClick (R.id.sunLabelButton)
+    public void sunLabelButtonClicked(View view){
+        if(mSunLabel.getText() == "Sunrise") {
+            mSunLabel.setText("Sunset");
+            mSunValue.setText(mCurrent.getFormattedSunsetTime()+"");
+        }
+        else {
+            mSunLabel.setText("Sunrise");
+            mSunValue.setText(mCurrent.getFormattedSunriseTime()+"");
+        }
+    }
+
+    @OnClick (R.id.pwhLabelButton)
+    public void pwhLabelButtonClicked(View view){
+        if(mPWHLabel.getText() == "Rain/Snow") {
+            mPWHLabel.setText("Wind Speed");
+            mPWHValue.setText(mCurrent.getWindSpeed() +"");
+        }
+        else if (mPWHLabel.getText() == "Wind Speed"){
+            mPWHLabel.setText("Humidity");
+            mPWHValue.setText(mCurrent.getHumidity()+"");
+        } else {
+            mPWHLabel.setText("Rain/Snow");
+            mPWHValue.setText(mCurrent.getPrecipChance() + "%");
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        getForecast(latitude, longitude);
     }
 }
